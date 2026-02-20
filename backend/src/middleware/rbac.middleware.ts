@@ -57,3 +57,31 @@ export const can = (permissionKey: string) => {
     next();
   };
 };
+
+export const requireTenantAdmin = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+  if (!req.auth) {
+    return next(new ApiError(401, "Unauthorized"));
+  }
+
+  if (req.auth.systemRole === "SYSTEM_ADMIN") {
+    return next();
+  }
+
+  const adminLikeRole = await prisma.userRole.findFirst({
+    where: {
+      tenantId: req.auth.tenantId,
+      userId: req.auth.userId,
+      role: {
+        deletedAt: null,
+        tenantRole: { in: ["OWNER", "ADMIN"] }
+      }
+    },
+    select: { id: true }
+  });
+
+  if (!adminLikeRole) {
+    return next(new ApiError(403, "Forbidden: admin role required"));
+  }
+
+  next();
+};

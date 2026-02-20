@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { can } from "../../middleware/rbac.middleware";
+import { can, requireTenantAdmin } from "../../middleware/rbac.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { PERMISSIONS } from "../../constants/permissions";
 import { activityMiddleware } from "../../middleware/activity.middleware";
@@ -8,6 +8,7 @@ import {
   createEmployee,
   deleteEmployee,
   getEmployee,
+  listEmployeeRoles,
   listEmployees,
   updateEmployee,
   updateEmployeeStatus
@@ -16,6 +17,7 @@ import {
   createEmployeeSchema,
   idParamSchema,
   listEmployeesSchema,
+  listRolesSchema,
   updateEmployeeSchema,
   updateEmployeeStatusSchema
 } from "./employee.validation";
@@ -23,9 +25,11 @@ import {
 const router = Router();
 
 router.get("/", can(PERMISSIONS.EMPLOYEE_MANAGE), validate(listEmployeesSchema), listEmployees);
+router.get("/roles", can(PERMISSIONS.EMPLOYEE_MANAGE), validate(listRolesSchema), listEmployeeRoles);
 router.get("/:id", can(PERMISSIONS.EMPLOYEE_MANAGE), validate(idParamSchema), getEmployee);
 router.post(
   "/",
+  requireTenantAdmin,
   can(PERMISSIONS.EMPLOYEE_MANAGE),
   validate(createEmployeeSchema),
   activityMiddleware("create", "employee"),
