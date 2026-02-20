@@ -1,0 +1,381 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantStatus {
+  active
+  suspended
+}
+
+enum UserStatus {
+  active
+  inactive
+}
+
+enum SystemRole {
+  USER
+  SYSTEM_ADMIN
+}
+
+enum TenantRole {
+  OWNER
+  ADMIN
+  EMPLOYEE
+}
+
+enum LeadStatus {
+  new
+  contacted
+  qualified
+  proposal
+  won
+  lost
+}
+
+enum SubscriptionStatus {
+  active
+  paused
+  canceled
+  expired
+}
+
+enum InvoiceStatus {
+  draft
+  issued
+  paid
+  overdue
+  canceled
+}
+
+enum PaymentStatus {
+  pending
+  succeeded
+  failed
+}
+
+model Tenant {
+  id            String        @id @default(uuid())
+  name          String
+  slug          String        @unique
+  status        TenantStatus  @default(active)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+
+  users         User[]
+  roles         Role[]
+  rolePerms     RolePermission[]
+  userRoles     UserRole[]
+  leads         Lead[]
+  leadNotes     LeadNote[]
+  clients       Client[]
+  subscriptions Subscription[]
+  invoices      Invoice[]
+  payments      Payment[]
+  activities    Activity[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
+
+  @@index([status])
+}
+
+model User {
+  id            String      @id @default(uuid())
+  tenantId      String
+  systemRole    SystemRole  @default(USER)
+  email         String
+  passwordHash  String
+  firstName     String
+  lastName      String
+  status        UserStatus  @default(active)
+  lastLoginAt   DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
+
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  roles         UserRole[]
+  assignedLeads Lead[]      @relation("LeadAssignee")
+  refreshTokens RefreshToken[]
+  activities    Activity[]  @relation("ActivityActor")
+  audits        AuditLog[]  @relation("AuditActor")
+  leadNotes     LeadNote[]
+
+  @@unique([tenantId, email])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([systemRole])
+}
+
+model Role {
+  id            String           @id @default(uuid())
+  tenantId      String
+  tenantRole    TenantRole
+  description   String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  deletedAt     DateTime?
+
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  rolePerms     RolePermission[]
+  userRoles     UserRole[]
+
+  @@unique([tenantId, tenantRole])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+}
+
+model Permission {
+  id            String           @id @default(uuid())
+  key           String           @unique
+  description   String?
+  createdAt     DateTime         @default(now())
+
+  rolePerms     RolePermission[]
+}
+
+model RolePermission {
+  id            String      @id @default(uuid())
+  tenantId      String
+  roleId        String
+  permissionId  String
+  createdAt     DateTime    @default(now())
+
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  role          Role        @relation(fields: [roleId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  permission    Permission  @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, roleId, permissionId])
+  @@index([tenantId, roleId])
+}
+
+model UserRole {
+  id            String    @id @default(uuid())
+  tenantId      String
+  userId        String
+  roleId        String
+  createdAt     DateTime  @default(now())
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user          User      @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  role          Role      @relation(fields: [roleId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([tenantId, userId, roleId])
+  @@index([tenantId, userId])
+}
+
+model Lead {
+  id              String      @id @default(uuid())
+  tenantId        String
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  company         String?
+  status          LeadStatus  @default(new)
+  assignedToId    String?
+  source          String?
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  deletedAt       DateTime?
+
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  assignedTo      User?       @relation("LeadAssignee", fields: [assignedToId, tenantId], references: [id, tenantId], onDelete: SetNull)
+  leadNotes       LeadNote[]
+  convertedClient Client?     @relation("LeadToClient")
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, assignedToId])
+  @@unique([id, tenantId])
+}
+
+model LeadNote {
+  id            String    @id @default(uuid())
+  tenantId      String
+  leadId        String
+  body          String
+  createdById   String
+  createdAt     DateTime  @default(now())
+  deletedAt     DateTime?
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lead          Lead      @relation(fields: [leadId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  createdBy     User      @relation(fields: [createdById, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@index([tenantId, leadId])
+  @@unique([id, tenantId])
+}
+
+model Client {
+  id              String          @id @default(uuid())
+  tenantId        String
+  name            String
+  email           String?
+  phone           String?
+  company         String?
+  sourceLeadId    String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  sourceLead      Lead?           @relation("LeadToClient", fields: [sourceLeadId, tenantId], references: [id, tenantId], onDelete: SetNull)
+  subscriptions   Subscription[]
+  invoices        Invoice[]
+
+  @@index([tenantId])
+  @@unique([id, tenantId])
+  @@unique([sourceLeadId, tenantId])
+}
+
+model SubscriptionPlan {
+  id              String          @id @default(uuid())
+  code            String          @unique
+  name            String
+  description     String?
+  priceCents      Int
+  currency        String          @default("USD")
+  interval        String
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  subscriptions   Subscription[]
+}
+
+model Subscription {
+  id              String             @id @default(uuid())
+  tenantId        String
+  clientId        String
+  planId          String
+  status          SubscriptionStatus @default(active)
+  startsAt        DateTime
+  endsAt          DateTime?
+  canceledAt      DateTime?
+  pausedAt        DateTime?
+  resumedAt       DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  deletedAt       DateTime?
+
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client          Client             @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  plan            SubscriptionPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  invoices        Invoice[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, clientId])
+  @@unique([id, tenantId])
+}
+
+model Invoice {
+  id              String        @id @default(uuid())
+  tenantId        String
+  clientId        String
+  subscriptionId  String?
+  invoiceNumber   String
+  status          InvoiceStatus @default(draft)
+  amountCents     Int
+  currency        String        @default("USD")
+  issuedAt        DateTime?
+  dueAt           DateTime?
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client          Client        @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  subscription    Subscription? @relation(fields: [subscriptionId, tenantId], references: [id, tenantId], onDelete: SetNull)
+  payments        Payment[]
+
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId, status])
+  @@unique([id, tenantId])
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  tenantId        String
+  invoiceId       String
+  amountCents     Int
+  currency        String        @default("USD")
+  status          PaymentStatus @default(succeeded)
+  paidAt          DateTime      @default(now())
+  providerRef     String?
+  createdAt       DateTime      @default(now())
+  deletedAt       DateTime?
+
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  invoice         Invoice       @relation(fields: [invoiceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@index([tenantId, invoiceId])
+  @@unique([id, tenantId])
+}
+
+model Activity {
+  id              String      @id @default(uuid())
+  tenantId        String
+  userId          String?
+  action          String
+  resource        String
+  resourceId      String?
+  metadata        Json?
+  createdAt       DateTime    @default(now())
+
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user            User?       @relation("ActivityActor", fields: [userId, tenantId], references: [id, tenantId], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@unique([id, tenantId])
+}
+
+model AuditLog {
+  id              String      @id @default(uuid())
+  tenantId        String
+  actorUserId     String?
+  action          String
+  resource        String
+  resourceId      String?
+  oldValues       Json?
+  newValues       Json?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime    @default(now())
+
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  actor           User?       @relation("AuditActor", fields: [actorUserId, tenantId], references: [id, tenantId], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@unique([id, tenantId])
+}
+
+model RefreshToken {
+  id              String      @id @default(uuid())
+  tenantId        String
+  userId          String
+  tokenHash       String      @unique
+  familyId        String
+  expiresAt       DateTime
+  revokedAt       DateTime?
+  replacedById    String?
+  createdByIp     String?
+  revokedByIp     String?
+  userAgent       String?
+  createdAt       DateTime    @default(now())
+
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user            User        @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([familyId])
+  @@unique([id, tenantId])
+}
