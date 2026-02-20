@@ -9,6 +9,7 @@ import invoiceRoutes from "../modules/billing/invoice.routes";
 import paymentRoutes from "../modules/billing/payment.routes";
 import dashboardRoutes from "../modules/dashboard/dashboard.routes";
 import { authMiddleware } from "../middleware/auth.middleware";
+import { tenantContext } from "../middleware/tenantContext.middleware";
 import { tenantIsolationMiddleware } from "../middleware/tenant.middleware";
 import { suspendGuardMiddleware } from "../middleware/suspendGuard.middleware";
 import { requireSystemAdmin } from "../middleware/systemRole.middleware";
@@ -16,9 +17,9 @@ import { requireSystemAdmin } from "../middleware/systemRole.middleware";
 const router = Router();
 
 router.use("/auth", authRoutes);
-router.use("/subscription-plans", authMiddleware, requireSystemAdmin, planRoutes);
+router.use("/subscription-plans", authMiddleware, tenantContext, requireSystemAdmin, planRoutes);
 
-router.use(authMiddleware, tenantIsolationMiddleware, suspendGuardMiddleware);
+router.use(authMiddleware, tenantContext, tenantIsolationMiddleware, suspendGuardMiddleware);
 router.use("/employees", employeeRoutes);
 router.use("/leads", leadRoutes);
 router.use("/clients", clientRoutes);
