@@ -68,6 +68,7 @@ async function seedTenantRoles(tenantId: string) {
     "invoice.create",
     "invoice.view",
     "payment.record",
+    "employee.manage",
     "dashboard.view"
   ]);
   const employeeKeys = new Set([

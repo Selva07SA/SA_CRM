@@ -7,6 +7,10 @@ import { EmployeeRepository } from "./employee.repository";
 const repo = new EmployeeRepository();
 
 export class EmployeeService {
+  listRoles(tenantId: string) {
+    return repo.listRoles(tenantId);
+  }
+
   async list(tenantId: string, query: Record<string, unknown>) {
     const page = parsePagination(query);
     const search = typeof query.search === "string" ? query.search : undefined;
@@ -29,6 +33,15 @@ export class EmployeeService {
   }
 
   async create(tenantId: string, data: { email: string; firstName: string; lastName: string; password: string; roleIds: string[] }) {
+    if (data.roleIds.length === 0) {
+      throw new ApiError(400, "At least one role is required");
+    }
+
+    const assignableRoles = await repo.findAssignableRolesByIds(tenantId, data.roleIds);
+    if (assignableRoles.length !== new Set(data.roleIds).size) {
+      throw new ApiError(400, "Invalid role selection");
+    }
+
     const passwordHash = await bcrypt.hash(data.password, env.BCRYPT_ROUNDS);
 
     const user = await repo.create({
@@ -48,6 +61,17 @@ export class EmployeeService {
 
   async update(tenantId: string, id: string, payload: { firstName?: string; lastName?: string; roleIds?: string[] }) {
     await this.getById(tenantId, id);
+
+    if (payload.roleIds) {
+      if (payload.roleIds.length === 0) {
+        throw new ApiError(400, "At least one role is required");
+      }
+
+      const assignableRoles = await repo.findAssignableRolesByIds(tenantId, payload.roleIds);
+      if (assignableRoles.length !== new Set(payload.roleIds).size) {
+        throw new ApiError(400, "Invalid role selection");
+      }
+    }
 
     await repo.update(tenantId, id, {
       firstName: payload.firstName,

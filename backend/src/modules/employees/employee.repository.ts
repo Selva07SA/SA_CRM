@@ -24,6 +24,30 @@ const employeeSelect = {
 } as const;
 
 export class EmployeeRepository {
+  listRoles(tenantId: string) {
+    return prisma.role.findMany({
+      where: { tenantId, deletedAt: null, tenantRole: { in: ["ADMIN", "EMPLOYEE"] } },
+      orderBy: { tenantRole: "asc" },
+      select: {
+        id: true,
+        tenantRole: true,
+        description: true
+      }
+    });
+  }
+
+  findAssignableRolesByIds(tenantId: string, roleIds: string[]) {
+    return prisma.role.findMany({
+      where: {
+        tenantId,
+        id: { in: roleIds },
+        deletedAt: null,
+        tenantRole: { in: ["ADMIN", "EMPLOYEE"] }
+      },
+      select: { id: true }
+    });
+  }
+
   list(tenantId: string, search: string | undefined, skip: number, take: number) {
     return prisma.user.findMany({
       where: {
