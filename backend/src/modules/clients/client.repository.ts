@@ -1,11 +1,12 @@
 import { prisma } from "../../config/prisma";
 
 export class ClientRepository {
-  list(tenantId: string, search: string | undefined, skip: number, take: number) {
+  list(tenantId: string, search: string | undefined, skip: number, take: number, scopedUserId?: string) {
     return prisma.client.findMany({
       where: {
         tenantId,
         deletedAt: null,
+        ...(scopedUserId ? { sourceLead: { assignedToId: scopedUserId } } : {}),
         OR: search
           ? [
               { name: { contains: search, mode: "insensitive" } },
@@ -20,11 +21,12 @@ export class ClientRepository {
     });
   }
 
-  count(tenantId: string, search?: string) {
+  count(tenantId: string, search?: string, scopedUserId?: string) {
     return prisma.client.count({
       where: {
         tenantId,
         deletedAt: null,
+        ...(scopedUserId ? { sourceLead: { assignedToId: scopedUserId } } : {}),
         OR: search
           ? [
               { name: { contains: search, mode: "insensitive" } },
@@ -36,21 +38,31 @@ export class ClientRepository {
     });
   }
 
-  byId(tenantId: string, id: string) {
-    return prisma.client.findFirst({ where: { tenantId, id, deletedAt: null } });
+  byId(tenantId: string, id: string, scopedUserId?: string) {
+    return prisma.client.findFirst({
+      where: { tenantId, id, deletedAt: null, ...(scopedUserId ? { sourceLead: { assignedToId: scopedUserId } } : {}) }
+    });
   }
 
   create(data: Parameters<typeof prisma.client.create>[0]["data"]) {
     return prisma.client.create({ data });
   }
 
-  updateMany(tenantId: string, id: string, data: Parameters<typeof prisma.client.updateMany>[0]["data"]) {
-    return prisma.client.updateMany({ where: { tenantId, id, deletedAt: null }, data });
+  updateMany(tenantId: string, id: string, data: Parameters<typeof prisma.client.updateMany>[0]["data"], scopedUserId?: string) {
+    return prisma.client.updateMany({
+      where: { tenantId, id, deletedAt: null, ...(scopedUserId ? { sourceLead: { assignedToId: scopedUserId } } : {}) },
+      data
+    });
   }
 
-  subscriptions(tenantId: string, clientId: string) {
+  subscriptions(tenantId: string, clientId: string, scopedUserId?: string) {
     return prisma.subscription.findMany({
-      where: { tenantId, clientId, deletedAt: null },
+      where: {
+        tenantId,
+        clientId,
+        deletedAt: null,
+        ...(scopedUserId ? { client: { sourceLead: { assignedToId: scopedUserId } } } : {})
+      },
       select: {
         id: true,
         status: true,

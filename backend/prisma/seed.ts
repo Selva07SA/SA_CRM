@@ -54,7 +54,7 @@ async function seedTenantRoles(tenantId: string) {
   const permissions = await prisma.permission.findMany({ select: { id: true, key: true } });
 
   const ownerKeys = new Set(permissionKeys);
-  const managerKeys = new Set([
+  const adminKeys = new Set([
     "lead.create",
     "lead.view",
     "lead.assign",
@@ -70,12 +70,27 @@ async function seedTenantRoles(tenantId: string) {
     "payment.record",
     "dashboard.view"
   ]);
-  const agentKeys = new Set(["lead.create", "lead.view", "client.view", "dashboard.view"]);
+  const employeeKeys = new Set([
+    "lead.create",
+    "lead.view",
+    "lead.convert",
+    "client.view",
+    "subscription.create",
+    "subscription.cancel",
+    "subscription.renew",
+    "invoice.view",
+    "payment.record",
+    "dashboard.view"
+  ]);
+
+  await prisma.rolePermission.deleteMany({
+    where: { tenantId, roleId: { in: [ownerRole.id, adminRole.id, employeeRole.id] } }
+  });
 
   const grants = [
     ...permissions.filter((p) => ownerKeys.has(p.key)).map((p) => ({ roleId: ownerRole.id, permissionId: p.id })),
-    ...permissions.filter((p) => managerKeys.has(p.key)).map((p) => ({ roleId: adminRole.id, permissionId: p.id })),
-    ...permissions.filter((p) => agentKeys.has(p.key)).map((p) => ({ roleId: employeeRole.id, permissionId: p.id }))
+    ...permissions.filter((p) => adminKeys.has(p.key)).map((p) => ({ roleId: adminRole.id, permissionId: p.id })),
+    ...permissions.filter((p) => employeeKeys.has(p.key)).map((p) => ({ roleId: employeeRole.id, permissionId: p.id }))
   ];
 
   for (const grant of grants) {

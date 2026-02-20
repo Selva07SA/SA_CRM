@@ -2,9 +2,16 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 
 export class LeadRepository {
-  list(tenantId: string, where: Prisma.LeadWhereInput, skip: number, take: number, orderBy: Prisma.LeadOrderByWithRelationInput) {
+  list(
+    tenantId: string,
+    where: Prisma.LeadWhereInput,
+    skip: number,
+    take: number,
+    orderBy: Prisma.LeadOrderByWithRelationInput,
+    scopedUserId?: string
+  ) {
     return prisma.lead.findMany({
-      where: { tenantId, deletedAt: null, ...where },
+      where: { tenantId, deletedAt: null, ...(scopedUserId ? { assignedToId: scopedUserId } : {}), ...where },
       skip,
       take,
       orderBy,
@@ -12,20 +19,25 @@ export class LeadRepository {
     });
   }
 
-  count(tenantId: string, where: Prisma.LeadWhereInput) {
-    return prisma.lead.count({ where: { tenantId, deletedAt: null, ...where } });
+  count(tenantId: string, where: Prisma.LeadWhereInput, scopedUserId?: string) {
+    return prisma.lead.count({ where: { tenantId, deletedAt: null, ...(scopedUserId ? { assignedToId: scopedUserId } : {}), ...where } });
   }
 
-  byId(tenantId: string, id: string) {
-    return prisma.lead.findFirst({ where: { tenantId, id, deletedAt: null } });
+  byId(tenantId: string, id: string, scopedUserId?: string) {
+    return prisma.lead.findFirst({
+      where: { tenantId, id, deletedAt: null, ...(scopedUserId ? { assignedToId: scopedUserId } : {}) }
+    });
   }
 
   create(data: Prisma.LeadUncheckedCreateInput) {
     return prisma.lead.create({ data });
   }
 
-  updateMany(tenantId: string, id: string, data: Prisma.LeadUncheckedUpdateInput) {
-    return prisma.lead.updateMany({ where: { tenantId, id, deletedAt: null }, data });
+  updateMany(tenantId: string, id: string, data: Prisma.LeadUncheckedUpdateInput, scopedUserId?: string) {
+    return prisma.lead.updateMany({
+      where: { tenantId, id, deletedAt: null, ...(scopedUserId ? { assignedToId: scopedUserId } : {}) },
+      data
+    });
   }
 
   notes(tenantId: string, leadId: string) {
