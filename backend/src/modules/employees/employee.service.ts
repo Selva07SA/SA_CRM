@@ -3,11 +3,13 @@ import { env } from "../../config/env";
 import { ApiError } from "../../utils/apiError";
 import { parsePagination } from "../../utils/pagination";
 import { EmployeeRepository } from "./employee.repository";
+import { prisma } from "../../config/prisma";
 
 const repo = new EmployeeRepository();
 
 export class EmployeeService {
-  listRoles(tenantId: string) {
+  async listRoles(tenantId: string) {
+    await this.ensureAssignableRoles(tenantId);
     return repo.listRoles(tenantId);
   }
 
@@ -33,6 +35,8 @@ export class EmployeeService {
   }
 
   async create(tenantId: string, data: { email: string; firstName: string; lastName: string; password: string; roleIds: string[] }) {
+    await this.ensureAssignableRoles(tenantId);
+
     if (data.roleIds.length === 0) {
       throw new ApiError(400, "At least one role is required");
     }
@@ -60,6 +64,7 @@ export class EmployeeService {
   }
 
   async update(tenantId: string, id: string, payload: { firstName?: string; lastName?: string; roleIds?: string[] }) {
+    await this.ensureAssignableRoles(tenantId);
     await this.getById(tenantId, id);
 
     if (payload.roleIds) {
@@ -93,6 +98,106 @@ export class EmployeeService {
   async remove(tenantId: string, id: string) {
     const updated = await repo.softDelete(tenantId, id);
     if (updated.count === 0) throw new ApiError(404, "Employee not found");
+  }
+
+  private async ensureAssignableRoles(tenantId: string) {
+    const permissionKeys = [
+      "lead.create",
+      "lead.view",
+      "lead.assign",
+      "lead.convert",
+      "client.create",
+      "client.view",
+      "client.update",
+      "subscription.create",
+      "subscription.cancel",
+      "subscription.renew",
+      "invoice.create",
+      "invoice.view",
+      "payment.record",
+      "employee.manage",
+      "dashboard.view"
+    ];
+
+    for (const key of permissionKeys) {
+      await prisma.permission.upsert({
+        where: { key },
+        update: {},
+        create: { key, description: key }
+      });
+    }
+
+    const [adminRole, employeeRole] = await Promise.all([
+      prisma.role.upsert({
+        where: { tenantId_tenantRole: { tenantId, tenantRole: "ADMIN" } },
+        update: {},
+        create: { tenantId, tenantRole: "ADMIN", description: "Operational manager" }
+      }),
+      prisma.role.upsert({
+        where: { tenantId_tenantRole: { tenantId, tenantRole: "EMPLOYEE" } },
+        update: {},
+        create: { tenantId, tenantRole: "EMPLOYEE", description: "Sales employee" }
+      })
+    ]);
+
+    const permissions = await prisma.permission.findMany({
+      where: { key: { in: permissionKeys } },
+      select: { id: true, key: true }
+    });
+
+    const adminKeys = new Set([
+      "lead.create",
+      "lead.view",
+      "lead.assign",
+      "lead.convert",
+      "client.create",
+      "client.view",
+      "client.update",
+      "subscription.create",
+      "subscription.cancel",
+      "subscription.renew",
+      "invoice.create",
+      "invoice.view",
+      "payment.record",
+      "employee.manage",
+      "dashboard.view"
+    ]);
+
+    const employeeKeys = new Set([
+      "lead.create",
+      "lead.view",
+      "lead.convert",
+      "client.view",
+      "subscription.create",
+      "subscription.cancel",
+      "subscription.renew",
+      "invoice.view",
+      "payment.record",
+      "dashboard.view"
+    ]);
+
+    const grants = [
+      ...permissions.filter((p) => adminKeys.has(p.key)).map((p) => ({ roleId: adminRole.id, permissionId: p.id })),
+      ...permissions.filter((p) => employeeKeys.has(p.key)).map((p) => ({ roleId: employeeRole.id, permissionId: p.id }))
+    ];
+
+    for (const grant of grants) {
+      await prisma.rolePermission.upsert({
+        where: {
+          tenantId_roleId_permissionId: {
+            tenantId,
+            roleId: grant.roleId,
+            permissionId: grant.permissionId
+          }
+        },
+        update: {},
+        create: {
+          tenantId,
+          roleId: grant.roleId,
+          permissionId: grant.permissionId
+        }
+      });
+    }
   }
 }
 
