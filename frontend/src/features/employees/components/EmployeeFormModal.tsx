@@ -33,6 +33,7 @@ export const EmployeeFormModal = ({ open, onClose, onSubmit, initial }: Props) =
     setEmail(initial?.email ?? "");
     setPassword("");
     setSelectedRoleId(initial?.roles[0]?.roleId ?? "");
+    void rolesQuery.refetch();
   }, [initial, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -47,7 +48,16 @@ export const EmployeeFormModal = ({ open, onClose, onSubmit, initial }: Props) =
     onClose();
   };
 
-  const roleOptions = (rolesQuery.data ?? []).filter((role) => role.tenantRole === "ADMIN" || role.tenantRole === "EMPLOYEE");
+  const roleOptions = [...(rolesQuery.data ?? [])].sort((a, b) => {
+    const order = (role: string) => {
+      const value = role.toUpperCase();
+      if (value === "ADMIN") return 0;
+      if (value === "EMPLOYEE") return 1;
+      return 2;
+    };
+
+    return order(a.tenantRole) - order(b.tenantRole);
+  });
 
   return (
     <Modal open={open} onClose={onClose} title={initial ? "Edit Employee" : "Add Employee"}>
@@ -77,6 +87,9 @@ export const EmployeeFormModal = ({ open, onClose, onSubmit, initial }: Props) =
             ))}
           </select>
           {rolesQuery.isError ? <p className="text-xs text-rose-600">Unable to load roles.</p> : null}
+          {!rolesQuery.isLoading && !rolesQuery.isError && roleOptions.length === 0 ? (
+            <p className="text-xs text-rose-600">No roles available from backend. Seed roles and reload.</p>
+          ) : null}
         </label>
 
         <div className="flex justify-end gap-2">
