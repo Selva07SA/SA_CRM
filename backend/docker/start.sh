@@ -14,5 +14,10 @@ fi
 echo "Running Prisma migrations..."
 npx prisma migrate deploy
 
+if [ "${SEED_ON_START:-true}" = "true" ]; then
+  echo "Seeding permissions and tenant roles..."
+  npm run prisma:seed
+fi
+
 echo "Starting API..."
 node dist/src/server.js
