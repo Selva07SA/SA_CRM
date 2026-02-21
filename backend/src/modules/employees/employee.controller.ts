@@ -10,6 +10,10 @@ export const listEmployees = asyncHandler(async (req: Request, res: Response) =>
   sendSuccess(res, data.items, 200, data.meta);
 });
 
+export const listEmployeeRoles = asyncHandler(async (req: Request, res: Response) => {
+  sendSuccess(res, await service.listRoles(req.tenantId!));
+});
+
 export const getEmployee = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, await service.getById(req.tenantId!, String(req.params.id)));
 });
