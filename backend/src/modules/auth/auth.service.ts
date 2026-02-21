@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
-import { SystemRole } from "@prisma/client";
+import { Prisma, SystemRole } from "@prisma/client";
+import { randomUUID } from "crypto";
 import { ApiError } from "../../utils/apiError";
 import { AuthRepository } from "./auth.repository";
 import { env } from "../../config/env";
@@ -29,10 +30,12 @@ export class AuthService {
     if (existingTenant) throw new ApiError(409, "Tenant slug already exists");
 
     const passwordHash = await bcrypt.hash(input.password, env.BCRYPT_ROUNDS);
+    const tenantId = randomUUID();
 
     const result = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${tenantId}, true)`;
       const tenant = await tx.tenant.create({
-        data: { name: input.tenantName, slug: input.tenantSlug }
+        data: { id: tenantId, name: input.tenantName, slug: input.tenantSlug }
       });
 
       const user = await tx.user.create({
@@ -110,13 +113,33 @@ export class AuthService {
     if (!tenant || tenant.deletedAt) throw new ApiError(401, "Invalid credentials");
     if (tenant.status === "suspended") throw new ApiError(403, "Tenant suspended");
 
-    const user = await repo.findUserByEmail(tenant.id, input.email);
+    const user = await this.withTenantContext(tenant.id, async (tx) =>
+      tx.user.findFirst({
+        where: { tenantId: tenant.id, email: input.email, deletedAt: null },
+        select: {
+          id: true,
+          tenantId: true,
+          email: true,
+          passwordHash: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          systemRole: true,
+          roles: { select: { roleId: true } }
+        }
+      })
+    );
     if (!user || user.status !== "active") throw new ApiError(401, "Invalid credentials");
 
     const ok = await bcrypt.compare(input.password, user.passwordHash);
     if (!ok) throw new ApiError(401, "Invalid credentials");
 
-    await repo.markLastLogin(tenant.id, user.id);
+    await this.withTenantContext(tenant.id, (tx) =>
+      tx.user.update({
+        where: { id_tenantId: { id: user.id, tenantId: tenant.id } },
+        data: { lastLoginAt: new Date() }
+      })
+    );
 
     const roleIds = user.roles.map((r) => r.roleId);
     const tokens = await this.issueTokenPair(user.id, tenant.id, roleIds, user.systemRole, input.ip, input.userAgent);
@@ -143,47 +166,73 @@ export class AuthService {
     }
 
     const tokenHash = hashToken(refreshToken);
-    const stored = await repo.findRefreshTokenByHash(tokenHash);
-    if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
-      throw new ApiError(401, "Refresh token invalid or expired");
-    }
+    return this.withTenantContext(payload.tenantId, async (tx) => {
+      const stored = await tx.refreshToken.findUnique({
+        where: { tokenHash }
+      });
+      if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+        throw new ApiError(401, "Refresh token invalid or expired");
+      }
 
-    if (stored.tenantId !== payload.tenantId || stored.userId !== payload.userId) {
-      throw new ApiError(401, "Refresh token invalid or expired");
-    }
+      if (stored.tenantId !== payload.tenantId || stored.userId !== payload.userId) {
+        throw new ApiError(401, "Refresh token invalid or expired");
+      }
 
-    const roleIds = await repo.roleIdsForUser(payload.tenantId, payload.userId);
-    const accessToken = signAccessToken({
-      userId: payload.userId,
-      tenantId: payload.tenantId,
-      roleIds,
-      permissionKeys: await repo.permissionKeysForRoleIds(payload.tenantId, roleIds),
-      systemRole: payload.systemRole
+      const roleRows = await tx.userRole.findMany({
+        where: { tenantId: payload.tenantId, userId: payload.userId },
+        select: { roleId: true }
+      });
+      const roleIds = roleRows.map((row) => row.roleId);
+      const permissionRows = roleIds.length
+        ? await tx.rolePermission.findMany({
+            where: { tenantId: payload.tenantId, roleId: { in: roleIds }, role: { deletedAt: null } },
+            select: { permission: { select: { key: true } } }
+          })
+        : [];
+      const permissionKeys = [...new Set(permissionRows.map((row) => row.permission.key))];
+
+      const accessToken = signAccessToken({
+        userId: payload.userId,
+        tenantId: payload.tenantId,
+        roleIds,
+        permissionKeys,
+        systemRole: payload.systemRole
+      });
+      const signedRefresh = signRefreshToken({
+        userId: payload.userId,
+        tenantId: payload.tenantId,
+        roleIds,
+        systemRole: payload.systemRole
+      });
+
+      const created = await tx.refreshToken.create({
+        data: {
+          tenantId: payload.tenantId,
+          userId: payload.userId,
+          tokenHash: hashToken(signedRefresh),
+          familyId: stored.familyId,
+          expiresAt: new Date(Date.now() + env.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000),
+          createdByIp: ip,
+          userAgent
+        }
+      });
+
+      await tx.refreshToken.updateMany({
+        where: { id: stored.id, tenantId: payload.tenantId, revokedAt: null },
+        data: { revokedAt: new Date(), revokedByIp: ip, replacedById: created.id }
+      });
+
+      return { accessToken, refreshToken: signedRefresh };
     });
-    const signedRefresh = signRefreshToken({
-      userId: payload.userId,
-      tenantId: payload.tenantId,
-      roleIds,
-      systemRole: payload.systemRole
-    });
-
-    const created = await repo.createRefreshToken({
-      tenantId: payload.tenantId,
-      userId: payload.userId,
-      tokenHash: hashToken(signedRefresh),
-      familyId: stored.familyId,
-      expiresAt: new Date(Date.now() + env.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000),
-      createdByIp: ip,
-      userAgent
-    });
-
-    await repo.revokeRefreshToken(payload.tenantId, stored.id, ip, created.id);
-
-    return { accessToken, refreshToken: signedRefresh };
   }
 
   async logout(tenantId: string, userId: string, ip: string | null): Promise<void> {
-    await repo.revokeAllUserTokens(tenantId, userId, ip);
+    await this.withTenantContext(tenantId, (tx) =>
+      tx.refreshToken.updateMany({
+        where: { tenantId, userId, revokedAt: null },
+        data: { revokedAt: new Date(), revokedByIp: ip }
+      })
+    );
   }
 
   async me(tenantId: string, userId: string) {
@@ -224,21 +273,39 @@ export class AuthService {
     ip: string | null,
     userAgent: string | null
   ): Promise<AuthTokens> {
-    const permissionKeys = await repo.permissionKeysForRoleIds(tenantId, roleIds);
+    const permissionKeys = await this.withTenantContext(tenantId, async (tx) => {
+      if (roleIds.length === 0) return [];
+      const rows = await tx.rolePermission.findMany({
+        where: { tenantId, roleId: { in: roleIds }, role: { deletedAt: null } },
+        select: { permission: { select: { key: true } } }
+      });
+      return [...new Set(rows.map((row) => row.permission.key))];
+    });
     const accessToken = signAccessToken({ userId, tenantId, roleIds, permissionKeys, systemRole });
     const refreshToken = signRefreshToken({ userId, tenantId, roleIds, systemRole });
 
-    await repo.createRefreshToken({
-      tenantId,
-      userId,
-      tokenHash: hashToken(refreshToken),
-      familyId: randomId(),
-      expiresAt: new Date(Date.now() + env.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000),
-      createdByIp: ip,
-      userAgent
-    });
+    await this.withTenantContext(tenantId, (tx) =>
+      tx.refreshToken.create({
+        data: {
+          tenantId,
+          userId,
+          tokenHash: hashToken(refreshToken),
+          familyId: randomId(),
+          expiresAt: new Date(Date.now() + env.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000),
+          createdByIp: ip,
+          userAgent
+        }
+      })
+    );
 
     return { accessToken, refreshToken };
+  }
+
+  private withTenantContext<T>(tenantId: string, run: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${tenantId}, true)`;
+      return run(tx);
+    });
   }
 }
 

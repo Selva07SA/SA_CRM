@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { validate } from "../../middleware/validate.middleware";
 import { authMiddleware } from "../../middleware/auth.middleware";
+import { tenantContext } from "../../middleware/tenantContext.middleware";
 import { tenantIsolationMiddleware } from "../../middleware/tenant.middleware";
 import { suspendGuardMiddleware } from "../../middleware/suspendGuard.middleware";
 import { changePassword, login, logout, me, refresh, register, updateMe } from "./auth.controller";
@@ -12,7 +13,7 @@ router.post("/register", validate(registerSchema), register);
 router.post("/login", validate(loginSchema), login);
 router.post("/refresh", validate(refreshSchema), refresh);
 
-router.use(authMiddleware, tenantIsolationMiddleware, suspendGuardMiddleware);
+router.use(authMiddleware, tenantContext, tenantIsolationMiddleware, suspendGuardMiddleware);
 router.post("/logout", logout);
 router.get("/me", me);
 router.put("/me", validate(updateMeSchema), updateMe);
