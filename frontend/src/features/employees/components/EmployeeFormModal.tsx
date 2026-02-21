@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { isAxiosError } from "axios";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -25,6 +26,7 @@ export const EmployeeFormModal = ({ open, onClose, onSubmit, initial }: Props) =
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [selectedRoleId, setSelectedRoleId] = useState("");
+  const rolesForbidden = isAxiosError(rolesQuery.error) && rolesQuery.error.response?.status === 403;
 
   useEffect(() => {
     if (!open) return;
@@ -38,6 +40,7 @@ export const EmployeeFormModal = ({ open, onClose, onSubmit, initial }: Props) =
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedRoleId) return;
     await onSubmit({
       firstName,
       lastName,
@@ -68,17 +71,17 @@ export const EmployeeFormModal = ({ open, onClose, onSubmit, initial }: Props) =
         </div>
         <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required={!initial} disabled={Boolean(initial)} />
         {!initial ? <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /> : null}
-        <label className="block space-y-1">
-          <span className="text-sm font-medium text-slate-700">Role</span>
+        <label className="block space-y-1.5">
+          <span className="text-sm font-semibold text-slate-700">Role</span>
           <select
             value={selectedRoleId}
             onChange={(e) => setSelectedRoleId(e.currentTarget.value)}
             required
-            disabled={rolesQuery.isLoading}
-            className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-brand-500 transition focus:ring-2 disabled:bg-slate-100"
+            disabled={rolesQuery.isLoading || rolesForbidden}
+            className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-brand-500 transition focus:border-brand-500 focus:ring-2 disabled:bg-slate-100"
           >
             <option value="" disabled>
-              {rolesQuery.isLoading ? "Loading roles..." : "Select role"}
+              {rolesQuery.isLoading ? "Loading roles..." : rolesForbidden ? "Admin access required" : "Select role"}
             </option>
             {roleOptions.map((role) => (
               <option key={role.id} value={role.id}>
@@ -86,7 +89,8 @@ export const EmployeeFormModal = ({ open, onClose, onSubmit, initial }: Props) =
               </option>
             ))}
           </select>
-          {rolesQuery.isError ? <p className="text-xs text-rose-600">Unable to load roles.</p> : null}
+          {rolesForbidden ? <p className="text-xs text-rose-600">Only OWNER/ADMIN can create employees.</p> : null}
+          {rolesQuery.isError && !rolesForbidden ? <p className="text-xs text-rose-600">Unable to load roles.</p> : null}
           {!rolesQuery.isLoading && !rolesQuery.isError && roleOptions.length === 0 ? (
             <p className="text-xs text-rose-600">No roles available from backend. Seed roles and reload.</p>
           ) : null}
@@ -94,7 +98,9 @@ export const EmployeeFormModal = ({ open, onClose, onSubmit, initial }: Props) =
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit">{initial ? "Update" : "Create"}</Button>
+          <Button type="submit" disabled={rolesQuery.isLoading || rolesForbidden || !selectedRoleId}>
+            {initial ? "Update" : "Create"}
+          </Button>
         </div>
       </form>
     </Modal>

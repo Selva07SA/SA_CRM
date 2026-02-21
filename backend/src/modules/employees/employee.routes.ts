@@ -25,7 +25,7 @@ import {
 const router = Router();
 
 router.get("/", can(PERMISSIONS.EMPLOYEE_MANAGE), validate(listEmployeesSchema), listEmployees);
-router.get("/roles", can(PERMISSIONS.EMPLOYEE_MANAGE), validate(listRolesSchema), listEmployeeRoles);
+router.get("/roles", requireTenantAdmin, can(PERMISSIONS.EMPLOYEE_MANAGE), validate(listRolesSchema), listEmployeeRoles);
 router.get("/:id", can(PERMISSIONS.EMPLOYEE_MANAGE), validate(idParamSchema), getEmployee);
 router.post(
   "/",
