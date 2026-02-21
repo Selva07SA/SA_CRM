@@ -6,13 +6,17 @@ import { logger } from "../config/logger";
 import { env } from "../config/env";
 
 export const errorMiddleware = (err: unknown, _req: Request, res: Response, _next: NextFunction): void => {
+  const correlationIdRaw = res.getHeader("x-request-id") ?? _req.headers["x-request-id"];
+  const correlationId = Array.isArray(correlationIdRaw) ? correlationIdRaw[0] : correlationIdRaw;
+
   if (err instanceof ZodError) {
     res.status(400).json({
       success: false,
       error: {
         code: "VALIDATION_ERROR",
         message: "Validation error",
-        details: err.flatten()
+        details: err.flatten(),
+        ...(correlationId ? { correlationId } : {})
       }
     });
     return;
@@ -23,7 +27,8 @@ export const errorMiddleware = (err: unknown, _req: Request, res: Response, _nex
       success: false,
       error: {
         code: err.code,
-        message: env.NODE_ENV === "production" ? "Database request failed" : err.message
+        message: env.NODE_ENV === "production" ? "Database request failed" : err.message,
+        ...(correlationId ? { correlationId } : {})
       }
     });
     return;
@@ -35,7 +40,8 @@ export const errorMiddleware = (err: unknown, _req: Request, res: Response, _nex
       error: {
         code: err.code,
         message: err.message,
-        ...(typeof err.details !== "undefined" ? { details: err.details } : {})
+        ...(typeof err.details !== "undefined" ? { details: err.details } : {}),
+        ...(correlationId ? { correlationId } : {})
       }
     });
     return;
@@ -46,7 +52,8 @@ export const errorMiddleware = (err: unknown, _req: Request, res: Response, _nex
     success: false,
     error: {
       code: "INTERNAL_SERVER_ERROR",
-      message: env.NODE_ENV === "production" ? "Internal server error" : "Internal server error"
+      message: env.NODE_ENV === "production" ? "Internal server error" : "Internal server error",
+      ...(correlationId ? { correlationId } : {})
     }
   });
 };

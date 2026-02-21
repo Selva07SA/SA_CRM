@@ -100,7 +100,7 @@ export class InvoiceRepository {
         deletedAt: null,
         ...(scopedUserId ? { client: { sourceLead: { assignedToId: scopedUserId } } } : {})
       },
-      select: { id: true }
+      select: { id: true, status: true, canceledAt: true, endsAt: true }
     });
   }
 }
