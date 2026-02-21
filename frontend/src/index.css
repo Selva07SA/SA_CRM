@@ -1,0 +1,73 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f4f8f6;
+  --surface: #ffffff;
+  --surface-2: #f8fbfa;
+  --text: #13201b;
+  --muted: #5d6f67;
+  --line: #d8e6e0;
+  --brand-500: #0891b2;
+  --brand-600: #0e7490;
+  --accent: #ff8b36;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #a6b8b0 transparent;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Manrope", "Segoe UI", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(8, 145, 178, 0.16) 0%, rgba(8, 145, 178, 0) 34%),
+    radial-gradient(circle at 86% 90%, rgba(255, 139, 54, 0.16) 0%, rgba(255, 139, 54, 0) 30%),
+    linear-gradient(180deg, #f7fbf9 0%, #edf4f1 100%);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Space Grotesk", "Manrope", sans-serif;
+  letter-spacing: -0.02em;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.crm-shell {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(247, 251, 250, 0.9) 100%);
+}
+
+.surface-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(19, 32, 27, 0.06);
+}
+
+.metric-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.metric-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -30px -30px auto;
+  width: 90px;
+  height: 90px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(8, 145, 178, 0.22) 0%, rgba(8, 145, 178, 0) 72%);
+}

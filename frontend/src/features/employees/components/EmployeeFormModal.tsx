@@ -27,6 +27,7 @@ export const EmployeeFormModal = ({ open, onClose, onSubmit, initial }: Props) =
   const [password, setPassword] = useState("");
   const [selectedRoleId, setSelectedRoleId] = useState("");
   const rolesForbidden = isAxiosError(rolesQuery.error) && rolesQuery.error.response?.status === 403;
+  const passwordTooShort = !initial && password.length > 0 && password.length < 8;
 
   useEffect(() => {
     if (!open) return;
@@ -40,6 +41,7 @@ export const EmployeeFormModal = ({ open, onClose, onSubmit, initial }: Props) =
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!initial && password.length < 8) return;
     if (!selectedRoleId) return;
     await onSubmit({
       firstName,
@@ -70,7 +72,19 @@ export const EmployeeFormModal = ({ open, onClose, onSubmit, initial }: Props) =
           <Input label="Last Name" value={lastName} onChange={(e) => setLastName(e.target.value)} required />
         </div>
         <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required={!initial} disabled={Boolean(initial)} />
-        {!initial ? <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /> : null}
+        {!initial ? (
+          <div>
+            <Input
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              error={passwordTooShort ? "Password must be at least 8 characters." : undefined}
+            />
+          </div>
+        ) : null}
         <label className="block space-y-1.5">
           <span className="text-sm font-semibold text-slate-700">Role</span>
           <select
@@ -98,7 +112,7 @@ export const EmployeeFormModal = ({ open, onClose, onSubmit, initial }: Props) =
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={rolesQuery.isLoading || rolesForbidden || !selectedRoleId}>
+          <Button type="submit" disabled={rolesQuery.isLoading || rolesForbidden || !selectedRoleId || passwordTooShort}>
             {initial ? "Update" : "Create"}
           </Button>
         </div>

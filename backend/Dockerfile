@@ -1,28 +1,35 @@
-FROM node:22-alpine AS base
+# Build stage
+FROM node:22.20-slim AS builder
+
+# Install openssl for Prisma
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-FROM base AS deps
 COPY package*.json ./
-RUN npm ci --include=dev
+COPY prisma ./prisma/
 
-FROM deps AS build
-COPY tsconfig.json ./
-COPY prisma ./prisma
-COPY src ./src
+RUN npm ci
 RUN npx prisma generate
+
+COPY . .
 RUN npm run build
 
-FROM base AS runner
-RUN apk add --no-cache curl openssl
+# Production stage
+FROM node:22.20-slim AS runner
+
+# Install openssl for Prisma
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
 ENV NODE_ENV=production
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/package*.json ./
-COPY docker/start.sh /app/start.sh
-RUN chmod +x /app/start.sh
-RUN chown -R node:node /app
-USER node
+
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+
 EXPOSE 4000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD curl -fsS http://127.0.0.1:4000/healthz || exit 1
-CMD ["/app/start.sh"]
+
+CMD ["npm", "run", "start"]
