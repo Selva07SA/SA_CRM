@@ -9,6 +9,12 @@ const repo = new EmployeeRepository();
 
 export class EmployeeService {
   async listRoles(tenantId: string) {
+    const existingRoles = await repo.listRoles(tenantId);
+    if (existingRoles.length > 0) {
+      return existingRoles;
+    }
+
+    // Bootstrap tenant roles only when missing (legacy tenants).
     await this.ensureAssignableRoles(tenantId);
     return repo.listRoles(tenantId);
   }
