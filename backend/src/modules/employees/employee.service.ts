@@ -11,6 +11,24 @@ export class EmployeeService {
   async listRoles(tenantId: string) {
     const existingRoles = await repo.listRoles(tenantId);
     if (existingRoles.length > 0) {
+      const employeeRole = existingRoles.find((role) => role.tenantRole === "EMPLOYEE");
+      if (employeeRole) {
+        const employeeCreateInvoiceGrant = await prisma.rolePermission.findFirst({
+          where: {
+            tenantId,
+            roleId: employeeRole.id,
+            permission: { key: "invoice.create" }
+          },
+          select: { id: true }
+        });
+
+        // Keep legacy tenants in sync when new employee capabilities are introduced.
+        if (!employeeCreateInvoiceGrant) {
+          await this.ensureAssignableRoles(tenantId);
+          return repo.listRoles(tenantId);
+        }
+      }
+
       return existingRoles;
     }
 
@@ -173,10 +191,12 @@ export class EmployeeService {
       "lead.create",
       "lead.view",
       "lead.convert",
+      "client.create",
       "client.view",
       "subscription.create",
       "subscription.cancel",
       "subscription.renew",
+      "invoice.create",
       "invoice.view",
       "payment.record",
       "dashboard.view"
